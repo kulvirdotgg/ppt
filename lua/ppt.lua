@@ -6,8 +6,8 @@ end
 
 local create_floating_window = function(opts)
   opts = opts or {}
-  local width = opts.width or math.floor(vim.o.columns * 0.8)
-  local height = opts.height or math.floor(vim.o.lines * 0.8)
+  local width = opts.width or vim.o.columns
+  local height = opts.height or vim.o.lines
 
   local col = math.floor((vim.o.columns - width) / 2)
   local row = math.floor((vim.o.lines - height) / 2)
@@ -22,7 +22,7 @@ local create_floating_window = function(opts)
     col = col,
     row = row,
     style = "minimal",
-    border = "rounded",
+    border = { " ", " ", " ", " ", " ", " ", " ", " " },
   }
 
   local win = vim.api.nvim_open_win(buf, true, win_config)
@@ -101,7 +101,31 @@ M.start_ppt = function(opts)
     buffer = float.buf,
   })
 
+  local restore = {
+    cmdheight = {
+      original = vim.o.cmdheight,
+      ppt = 0,
+    },
+  }
+
+  -- set the options to desired values during ppt
+  for option, cfg in ipairs(restore) do
+    vim.opt[option] = cfg.ppt
+  end
+
+  vim.api.nvim_create_autocmd("BufLeave", {
+    buffer = float.buf,
+    callback = function()
+      -- restore the options to users options
+      for option, cfg in ipairs(restore) do
+        vim.opt[option] = cfg.original
+      end
+    end,
+  })
+
   vim.api.nvim_buf_set_lines(float.buf, 0, -1, false, parsed.slides[1])
 end
+
+M.start_ppt({ bufnr = 4 })
 
 return M
