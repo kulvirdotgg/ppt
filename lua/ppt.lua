@@ -19,7 +19,6 @@ end
 --- @field title string: Title of the slide
 --- @field body string[]: body of the slide
 
---- Parses some lines
 --- @param lines string[]: The lines in the buffer
 --- @return ppt.Slides
 local parse_slides = function(lines)
@@ -90,64 +89,79 @@ local create_window_configs = function()
   }
 end
 
+-- state objects for all methods to access
+local state = {
+  parsed = {},
+  slide_idx = 1,
+  floats = {},
+}
+
+local foreach_float = function(cb)
+  for name, float in pairs(state.floats) do
+    cb(name, float)
+  end
+end
+
+local ppt_keymap = function(mode, keymap, cb)
+  vim.keymap.set(mode, keymap, cb, {
+    -- We don't want to set this keymap globally
+    -- set this keymap for the slides buffer only
+    buffer = state.floats.body.buf,
+  })
+end
+
 M.start_ppt = function(opts)
   opts = opts or {}
   opts.bufnr = opts.bufnr or 0
 
+  state.slide_idx = 1
+
   local lines = vim.api.nvim_buf_get_lines(opts.bufnr, 0, -1, false)
-  local parsed = parse_slides(lines)
+  state.parsed = parse_slides(lines)
 
   local win_configs = create_window_configs()
+  -- create new windows for ppt plugin
+  -- header will contain the heading and centered
+  -- background is just background KEKW!!
+  -- body will have the content of slide
+  state.floats.background = create_floating_window(win_configs.background)
+  state.floats.header = create_floating_window(win_configs.header)
+  state.floats.body = create_floating_window(win_configs.body)
+  -- state.floats.footer = create_floating_window(win_configs.footer)
 
-  -- create new window for ppt
-  local background_float = create_floating_window(win_configs.background)
-  local header_float = create_floating_window(win_configs.header)
-  local body_float = create_floating_window(win_configs.body)
-
-  vim.bo[header_float.buf].filetype = "markdown"
-  vim.bo[body_float.buf].filetype = "markdown"
+  -- md filetype, for better looking md slides
+  foreach_float(function(_, float)
+    vim.bo[float.buf].filetype = "markdown"
+  end)
 
   -- keep track of what slide we are on
-  local slide_idx = 1
 
   local set_slide_content = function(idx)
     local width = vim.o.columns
-    local slide = parsed.slides[idx]
+    local slide = state.parsed.slides[idx]
     local padding = string.rep(" ", (width - #slide.title) / 2)
     local title = padding .. slide.title
 
-    vim.api.nvim_buf_set_lines(header_float.buf, 0, -1, false, { title })
-    vim.api.nvim_buf_set_lines(body_float.buf, 0, -1, false, slide.body)
+    vim.api.nvim_buf_set_lines(state.floats.header.buf, 0, -1, false, { title })
+    vim.api.nvim_buf_set_lines(state.floats.body.buf, 0, -1, false, slide.body)
   end
 
   -- keymap to move to next slide
-  vim.keymap.set("n", "n", function()
-    slide_idx = math.min(slide_idx + 1, #parsed.slides)
-    set_slide_content(slide_idx)
-  end, {
-    -- We don't want to set this keymap globally
-    -- set this keymap for the slides buffer only
-    buffer = body_float.buf,
-  })
+  ppt_keymap("n", "n", function()
+    state.slide_idx = math.min(state.slide_idx + 1, #state.parsed.slides)
+    set_slide_content(state.slide_idx)
+  end)
 
   -- keymap to move to prev slide
-  vim.keymap.set("n", "p", function()
-    slide_idx = math.max(slide_idx - 1, 1)
-    set_slide_content(slide_idx)
-  end, {
-    -- We don't want to set this keymap globally
-    -- set this keymap for the slides buffer only
-    buffer = body_float.buf,
-  })
+  ppt_keymap("n", "p", function()
+    state.slide_idx = math.max(state.slide_idx - 1, 1)
+    set_slide_content(state.slide_idx)
+  end)
 
   -- keymap to close the ppt window
-  vim.keymap.set("n", "q", function()
-    vim.api.nvim_win_close(body_float.win, true)
-  end, {
-    -- We don't want to set this keymap globally
-    -- set this keymap for the slides buffer only
-    buffer = body_float.buf,
-  })
+  ppt_keymap("n", "q", function()
+    vim.api.nvim_win_close(state.floats.body.win, true)
+  end)
 
   local restore = {
     cmdheight = {
@@ -164,37 +178,37 @@ M.start_ppt = function(opts)
   -- when user leaves the PPT plugin window, resote user settings
   -- also, close the background, header windows toooo
   vim.api.nvim_create_autocmd("BufLeave", {
-    buffer = body_float.buf,
+    buffer = state.floats.body.buf,
     callback = function()
       -- restore the options to users options
       for option, cfg in ipairs(restore) do
         vim.opt[option] = cfg.original
       end
 
-      pcall(vim.api.nvim_win_close, background_float.win, true)
-      pcall(vim.api.nvim_win_close, header_float.win, true)
+      pcall(vim.api.nvim_win_close, state.floats.background.win, true)
+      pcall(vim.api.nvim_win_close, state.floats.header.win, true)
     end,
   })
 
   vim.api.nvim_create_autocmd("VimResized", {
     group = vim.api.nvim_create_augroup("ppt-resize", {}),
     callback = function()
-      if body_float.win == nil or not vim.api.nvim_win_is_valid(body_float.win) then
+      if state.floats.body.win == nil or not vim.api.nvim_win_is_valid(state.floats.background.win) then
         return
       end
 
       local updated_win_configs = create_window_configs()
-      vim.api.nvim_win_set_config(header_float.win, updated_win_configs.header)
-      vim.api.nvim_win_set_config(background_float.win, updated_win_configs.background)
-      vim.api.nvim_win_set_config(body_float.win, updated_win_configs.body)
+      vim.api.nvim_win_set_config(state.floats.header.win, updated_win_configs.header)
+      vim.api.nvim_win_set_config(state.floats.background.win, updated_win_configs.background)
+      vim.api.nvim_win_set_config(state.floats.body.win, updated_win_configs.body)
 
-      set_slide_content(slide_idx)
+      set_slide_content(state.slide_idx)
     end,
   })
 
-  set_slide_content(slide_idx)
+  set_slide_content(state.slide_idx)
 end
 
-M.start_ppt({ bufnr = 15 })
+M.start_ppt({ bufnr = 11 })
 
 return M
