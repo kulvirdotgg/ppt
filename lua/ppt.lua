@@ -4,10 +4,14 @@ M.setup = function()
   -- nothing here yet
 end
 
-local create_floating_window = function(config)
+local create_floating_window = function(config, enter)
+  if enter == nil then
+    enter = false
+  end
+
   local buf = vim.api.nvim_create_buf(false, true)
 
-  local win = vim.api.nvim_open_win(buf, true, config)
+  local win = vim.api.nvim_open_win(buf, enter or false, config)
 
   return { buf = buf, win = win }
 end
@@ -56,6 +60,10 @@ local create_window_configs = function()
   local width = vim.o.columns
   local height = vim.o.lines
 
+  local header_height = 1 + 2 -- 1 + border
+  local footer_height = 1 -- 1
+  local body_height = height - header_height - footer_height - 4
+
   return {
     background = {
       relative = "editor",
@@ -80,11 +88,23 @@ local create_window_configs = function()
     body = {
       relative = "editor",
       width = width - 8,
-      height = height - 6,
+      height = body_height,
       style = "minimal",
       col = 8,
       row = 4,
       border = { " ", " ", " ", " ", " ", " ", " ", " " },
+    },
+    footer = {
+      relative = "editor",
+      width = width,
+      height = 1,
+      style = "minimal",
+      -- TODO: a minimal border on top maybe!!!
+      -- border = { " ", " ", " ", " ", " ", " ", " ", " " },
+      border = "none",
+      col = 0,
+      row = height - 1,
+      zindex = 2,
     },
   }
 end
@@ -115,6 +135,7 @@ M.start_ppt = function(opts)
   opts.bufnr = opts.bufnr or 0
 
   state.slide_idx = 1
+  state.title = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(opts.bufnr), ":t")
 
   local lines = vim.api.nvim_buf_get_lines(opts.bufnr, 0, -1, false)
   state.parsed = parse_slides(lines)
@@ -124,10 +145,11 @@ M.start_ppt = function(opts)
   -- header will contain the heading and centered
   -- background is just background KEKW!!
   -- body will have the content of slide
+  -- Also Body window will have enter as true, i.e. enter only in the body window
   state.floats.background = create_floating_window(win_configs.background)
   state.floats.header = create_floating_window(win_configs.header)
-  state.floats.body = create_floating_window(win_configs.body)
-  -- state.floats.footer = create_floating_window(win_configs.footer)
+  state.floats.body = create_floating_window(win_configs.body, true)
+  state.floats.footer = create_floating_window(win_configs.footer)
 
   -- md filetype, for better looking md slides
   foreach_float(function(_, float)
@@ -144,6 +166,8 @@ M.start_ppt = function(opts)
 
     vim.api.nvim_buf_set_lines(state.floats.header.buf, 0, -1, false, { title })
     vim.api.nvim_buf_set_lines(state.floats.body.buf, 0, -1, false, slide.body)
+    local footer = string.format(" %d / %d | %s", state.slide_idx, #state.parsed.slides, state.title)
+    vim.api.nvim_buf_set_lines(state.floats.footer.buf, 0, -1, false, { footer })
   end
 
   -- keymap to move to next slide
@@ -171,7 +195,7 @@ M.start_ppt = function(opts)
   }
 
   -- set the options to desired values during ppt
-  for option, cfg in ipairs(restore) do
+  for option, cfg in pairs(restore) do
     vim.opt[option] = cfg.ppt
   end
 
@@ -181,12 +205,13 @@ M.start_ppt = function(opts)
     buffer = state.floats.body.buf,
     callback = function()
       -- restore the options to users options
-      for option, cfg in ipairs(restore) do
+      for option, cfg in pairs(restore) do
         vim.opt[option] = cfg.original
       end
 
-      pcall(vim.api.nvim_win_close, state.floats.background.win, true)
-      pcall(vim.api.nvim_win_close, state.floats.header.win, true)
+      foreach_float(function(_, float)
+        pcall(vim.api.nvim_win_close, float.win, true)
+      end)
     end,
   })
 
@@ -198,9 +223,9 @@ M.start_ppt = function(opts)
       end
 
       local updated_win_configs = create_window_configs()
-      vim.api.nvim_win_set_config(state.floats.header.win, updated_win_configs.header)
-      vim.api.nvim_win_set_config(state.floats.background.win, updated_win_configs.background)
-      vim.api.nvim_win_set_config(state.floats.body.win, updated_win_configs.body)
+      foreach_float(function(name, float)
+        vim.api.nvim_win_set_config(float.win, updated_win_configs[name])
+      end)
 
       set_slide_content(state.slide_idx)
     end,
@@ -209,6 +234,6 @@ M.start_ppt = function(opts)
   set_slide_content(state.slide_idx)
 end
 
-M.start_ppt({ bufnr = 11 })
+-- M.start_ppt({ bufnr = 13 })
 
 return M
