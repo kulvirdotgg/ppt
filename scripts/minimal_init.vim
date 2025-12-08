@@ -2,4 +2,4 @@ set rtp+=.
 set rtp+=../plenary.nvim/
 
 runtime! plugin/plenary.vim
-" runtime! plugin/load_ppt.lua
+runtime! plugin/load_ppt.lua
