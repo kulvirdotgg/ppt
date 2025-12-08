@@ -47,8 +47,6 @@ local parse_slides = function(lines)
     else
       table.insert(curr_slide.body, line)
     end
-
-    table.insert(curr_slide, line)
   end
 
   table.insert(slides.slides, curr_slide)
@@ -234,6 +232,6 @@ M.start_ppt = function(opts)
   set_slide_content(state.slide_idx)
 end
 
--- M.start_ppt({ bufnr = 13 })
+M._parse_slides = parse_slides
 
 return M
