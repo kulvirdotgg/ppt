@@ -22,6 +22,11 @@ end
 --- @class ppt.Slide
 --- @field title string: Title of the slide
 --- @field body string[]: body of the slide
+--- @field blocks ppt.Block[]: A codeblock inside of a slide
+
+--- @class ppt.Block
+--- @field language string: language used in the codeblock
+--- @field code string: the actual code in the block
 
 --- @param lines string[]: The lines in the buffer
 --- @return ppt.Slides
@@ -30,6 +35,7 @@ local parse_slides = function(lines)
   local curr_slide = {
     title = "",
     body = {},
+    blocks = {},
   }
 
   local seperator = "^#"
@@ -43,6 +49,7 @@ local parse_slides = function(lines)
       curr_slide = {
         title = line,
         body = {},
+        blocks = {},
       }
     else
       table.insert(curr_slide.body, line)
@@ -50,6 +57,35 @@ local parse_slides = function(lines)
   end
 
   table.insert(slides.slides, curr_slide)
+
+  -- iterate over the slides and check for codeblocks
+  for _, slide in ipairs(slides.slides) do
+    local block = {
+      language = nil,
+      body = "",
+    }
+    local inside_block = false
+
+    for _, line in ipairs(slide.body) do
+      if vim.startswith(line, "```") then
+        if not inside_block then
+          inside_block = true
+
+          -- first 3 chars are ticks
+          block.language = string.sub(line, 4)
+        else
+          inside_block = false
+          block.body = vim.trim(block.body)
+          table.insert(slide.blocks, block)
+        end
+      else
+        -- inside the markdown block
+        if inside_block then
+          block.body = block.body .. line .. "\n"
+        end
+      end
+    end
+  end
 
   return slides
 end
