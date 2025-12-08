@@ -13,4 +13,4 @@ require("ppt").start_ppt()
 
 Use `n` and `p` for navigating between slides.
 - `n` obviously means **Next**
-- `p` means `previous`
+- `p` means **previous**
