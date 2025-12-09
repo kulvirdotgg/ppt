@@ -51,6 +51,7 @@ function M.start_ppt(opts)
     floats = {},
     title = "",
     restore_opts = {},
+    code_ouput_win = nil, -- Code execution output window
   }
 
   state.title = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(opts.bufnr), ":t")
@@ -82,7 +83,7 @@ function M.start_ppt(opts)
 
   -- helper function to setup kepmap
   local body_buf = state.floats.body.buf
-  local function set_keymap(mode, key, callback)
+  local function set_ppt_keymap(mode, key, callback)
     vim.keymap.set(mode, key, callback, {
       -- setup keymap for the ppt buffer only
       -- we don't wanna mess with user's global keymaps
@@ -91,24 +92,24 @@ function M.start_ppt(opts)
   end
 
   -- Navigate to next slide
-  set_keymap("n", "n", function()
+  set_ppt_keymap("n", "n", function()
     state.slide_idx = math.min(state.slide_idx + 1, #state.parsed.slides)
     render_slide(state)
   end)
 
   -- Navigate to previous slide
-  set_keymap("n", "p", function()
+  set_ppt_keymap("n", "p", function()
     state.slide_idx = math.max(state.slide_idx - 1, 1)
     render_slide(state)
   end)
 
   -- Close PPT window
-  set_keymap("n", "q", function()
+  set_ppt_keymap("n", "q", function()
     vim.api.nvim_win_close(state.floats.body.win, true)
   end)
 
   -- Execute code block
-  set_keymap("n", "X", function()
+  set_ppt_keymap("n", "X", function()
     local slide = state.parsed.slides[state.slide_idx]
     if not slide then
       return
@@ -132,9 +133,33 @@ function M.start_ppt(opts)
     -- Create output window
     local temp_width = math.floor(0.6 * vim.o.columns)
     local temp_height = math.floor(0.6 * vim.o.lines)
-    local output_win = window.create_code_output_window(temp_width, temp_height)
+    state.code_ouput_win = window.create_code_output_window(temp_width, temp_height)
 
-    vim.api.nvim_buf_set_lines(output_win.buf, 0, -1, false, formatted)
+    vim.api.nvim_buf_set_lines(state.code_ouput_win.buf, 0, -1, false, formatted)
+
+    -- keymap to close output window
+    vim.keymap.set("n", "q", function()
+      if vim.api.nvim_win_is_valid(state.code_ouput_win.win) then
+        vim.api.nvim_win_close(state.code_ouput_win.win, true)
+      end
+      -- returns focus to body window
+      if vim.api.nvim_win_is_valid(state.floats.body.win) then
+        vim.api.nvim_set_current_win(state.floats.body.win)
+      end
+      state.code_ouput_win = nil
+    end, { buffer = state.code_ouput_win.buf })
+
+    -- Also handle Esc key
+    vim.keymap.set("n", "<Esc>", function()
+      if vim.api.nvim_win_is_valid(state.code_ouput_win.win) then
+        vim.api.nvim_win_close(state.code_ouput_win.win, true)
+      end
+      -- Return focus to body window
+      if vim.api.nvim_win_is_valid(state.floats.body.win) then
+        vim.api.nvim_set_current_win(state.floats.body.win)
+      end
+      state.code_ouput_win = nil
+    end, { buffer = state.code_ouput_win.buf })
   end)
 
   -- Setup autocmds
@@ -152,6 +177,27 @@ function M.start_ppt(opts)
 
       -- Close all floating windows
       window.close_all_floats(state.floats)
+
+      -- Close output window if it exists
+      if state.code_ouput_win and vim.api.nvim_win_is_valid(state.code_ouput_win.win) then
+        vim.api.nvim_win_close(state.code_ouput_win.win, true)
+      end
+    end,
+  })
+
+  -- return focus to body window on output window closed
+  vim.api.nvim_create_autocmd("BufWinLeave", {
+    group = augroup,
+    callback = function(event)
+      if state.code_ouput_win and event.buf == state.code_ouput_win.buf then
+        -- Output window was closed, return focus to body window
+        vim.schedule(function()
+          if vim.api.nvim_win_is_valid(state.floats.body.win) then
+            vim.api.nvim_set_current_win(state.floats.body.win)
+          end
+          state.code_ouput_win = nil
+        end)
+      end
     end,
   })
 
