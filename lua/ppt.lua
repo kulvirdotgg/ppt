@@ -1,9 +1,5 @@
 local M = {}
 
-M.setup = function()
-  -- nothing here yet
-end
-
 local create_floating_window = function(config, enter)
   if enter == nil then
     enter = false
@@ -14,6 +10,70 @@ local create_floating_window = function(config, enter)
   local win = vim.api.nvim_open_win(buf, enter or false, config)
 
   return { buf = buf, win = win }
+end
+
+-- --- function to execute lua code
+-- --- @param block ppt.Block: Block of code to execute
+-- local execute_lua = function(block)
+--   local original_print = print
+--
+--   local output = {}
+--
+--   print = function(...)
+--     local args = { ... }
+--     local message = table.concat(vim.tbl_map(tostring, args), "\t")
+--     table.insert(output, message)
+--   end
+--
+--   local chunk = loadstring(block.code)
+--
+--   pcall(function()
+--     -- table.insert(output, "")
+--     -- table.insert(output, "# Output")
+--     -- table.insert(output, "")
+--     if not chunk then
+--       table.insert(output, "[[-- SKILL ISSUES --]]")
+--     else
+--       chunk()
+--     end
+--
+--     return output
+--   end)
+--
+--   print = original_print
+--
+--   return output
+-- end
+
+-- Function to execute the codeblock
+M.execute_code_block = function(program)
+  return function(block)
+    -- create a temp file to store the code.
+    local tempfile = vim.fn.tempname()
+    -- write the code from codeblock to temp file
+    vim.fn.writefile(vim.split(block.code, "\n"), tempfile)
+    -- execute the temp file
+    local result = vim.system({ program, tempfile }, { text = true }):wait()
+
+    return vim.split(result.stdout, "\n")
+  end
+end
+
+local options = {
+  executors = {
+    javascript = M.execute_code_block("node"),
+    python = M.execute_code_block("python"),
+  },
+}
+
+M.setup = function(opts)
+  opts = opts or {}
+  opts.executors = opts.executors or {}
+
+  opts.executors.javascript = opts.executors or M.execute_code_block("node")
+  opts.executors.python = opts.executors or M.execute_code_block("python")
+
+  options = opts
 end
 
 --- @class ppt.Slides
@@ -231,8 +291,50 @@ M.start_ppt = function(opts)
       return
     end
 
-    local chunk = loadstring(block.code)
-    chunk()
+    local executors = options.executors[block.language]
+    if not executors then
+      print("WARN: no way to execute the %s code!!!", block.language)
+      return
+    end
+
+    -- table for the message of the code block executed in the format:
+    -- # Code
+    -- ```typescript
+    -- console.log("meow meow!!")
+    -- ```
+    -- # Output
+    -- meow meow!!
+    local output = { "# code", "", "```" .. block.language }
+    vim.list_extend(output, vim.split(block.code, "\n"))
+    table.insert(output, "```")
+
+    table.insert(output, "")
+    table.insert(output, "# Output")
+    table.insert(output, "")
+    table.insert(output, "```")
+    table.insert(output, "")
+    vim.list_extend(output, executors(block))
+    table.insert(output, "```")
+
+    -- new buffer and window to display executed code ouput
+    -- keep it like half-ish the size of nvim window
+    local temp_width = math.floor(0.6 * vim.o.columns)
+    local temp_height = math.floor(0.6 * vim.o.lines)
+
+    local exec_code_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_open_win(exec_code_buf, true, {
+      relative = "editor",
+      style = "minimal",
+      noautocmd = true,
+      width = temp_width,
+      height = temp_height,
+      row = math.floor((vim.o.lines - temp_height) / 2),
+      col = math.floor((vim.o.columns - temp_width) / 2),
+      border = "rounded",
+    })
+
+    vim.bo[exec_code_buf].filetype = "markdown"
+    vim.api.nvim_buf_set_lines(exec_code_buf, 0, -1, false, output)
   end)
 
   local restore = {
@@ -281,8 +383,6 @@ M.start_ppt = function(opts)
 
   set_slide_content(state.slide_idx)
 end
-
-M.start_ppt({ bufnr = 22 })
 
 M._parse_slides = parse_slides
 
