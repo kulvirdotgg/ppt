@@ -62,7 +62,7 @@ local parse_slides = function(lines)
   for _, slide in ipairs(slides.slides) do
     local block = {
       language = nil,
-      body = "",
+      code = "",
     }
     local inside_block = false
 
@@ -75,13 +75,13 @@ local parse_slides = function(lines)
           block.language = string.sub(line, 4)
         else
           inside_block = false
-          block.body = vim.trim(block.body)
+          block.code = vim.trim(block.code)
           table.insert(slide.blocks, block)
         end
       else
         -- inside the markdown block
         if inside_block then
-          block.body = block.body .. line .. "\n"
+          block.code = block.code .. line .. "\n"
         end
       end
     end
@@ -221,6 +221,20 @@ M.start_ppt = function(opts)
     vim.api.nvim_win_close(state.floats.body.win, true)
   end)
 
+  -- keymap to execute the code inside the codeblock
+  ppt_keymap("n", "X", function()
+    local slide = state.parsed.slides[state.slide_idx]
+
+    local block = slide.blocks[1]
+    if not block then
+      print("No blocks on this slide")
+      return
+    end
+
+    local chunk = loadstring(block.code)
+    chunk()
+  end)
+
   local restore = {
     cmdheight = {
       original = vim.o.cmdheight,
@@ -267,6 +281,8 @@ M.start_ppt = function(opts)
 
   set_slide_content(state.slide_idx)
 end
+
+M.start_ppt({ bufnr = 22 })
 
 M._parse_slides = parse_slides
 
