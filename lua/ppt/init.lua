@@ -18,10 +18,25 @@ function M.setup(opts)
   opts = opts or {}
   opts.executors = opts.executors or {}
 
+  -- Convert string executors to executor functions
+  local processed_executors = {}
+  for lang, executor_value in pairs(opts.executors) do
+    if type(executor_value) == "string" then
+      -- User provided a string (e.g., "python3"), convert to executor function
+      processed_executors[lang] = executor.create_code_executor(executor_value)
+    else
+      -- Only strings are allowed for executors
+      vim.notify(
+        string.format("ppt.nvim: executor for '%s' must be a string, got %s", lang, type(executor_value)),
+        vim.log.levels.WARN
+      )
+    end
+  end
+
   -- Merge user code executors with defaults
   -- "force" uses values from rightmost table
   -- i.e. user opts in our case
-  options.executors = vim.tbl_extend("force", options.executors, opts.executors)
+  options.executors = vim.tbl_extend("force", options.executors, processed_executors)
 end
 
 --- Render slide content to windows
