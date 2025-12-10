@@ -1,6 +1,7 @@
 ---@diagnostic disable: undefined-field
 
-local parse_slides = require("ppt")._parse_slides
+local ppt = require("ppt")
+local parse_slides = ppt._parse_slides
 
 local eq = assert.are.same
 
@@ -65,4 +66,28 @@ describe("ppt.parse_slides", function()
       code = "print(meow)",
     }, slide.blocks[1])
   end)
+
+  it("should handle multiple code blocks in one slide", function()
+    local parsed = parse_slides({
+      "# Slide with Multiple Blocks",
+      "Some content",
+      "```javascript",
+      "console.log('meow')",
+      "```",
+      "More content",
+      "```python",
+      "print('meow')",
+      "```",
+    })
+
+    local slide = parsed.slides[1]
+    eq(2, #slide.blocks)
+
+    eq("javascript", slide.blocks[1].language)
+    eq("python", slide.blocks[2].language)
+
+    eq("console.log('meow')", slide.blocks[1].code)
+    eq("print('meow')", slide.blocks[2].code)
+  end)
 end)
+
