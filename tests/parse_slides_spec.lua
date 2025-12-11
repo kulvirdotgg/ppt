@@ -2,6 +2,7 @@
 
 local ppt = require("ppt")
 local parse_slides = ppt._parse_slides
+local executor = require("ppt.executor")
 
 local eq = assert.are.same
 
@@ -91,3 +92,29 @@ describe("ppt.parse_slides", function()
   end)
 end)
 
+describe("ppt.executor.format_code_output", function()
+  it("should format simple code output", function()
+    local block = {
+      language = "javascript",
+      code = "console.log('hello');",
+    }
+    local output = { "hello" }
+
+    local formatted = executor.format_code_output(block, output)
+
+    eq({
+      "# code",
+      "",
+      "```javascript",
+      "console.log('hello');",
+      "```",
+      "",
+      "# Output",
+      "",
+      "```",
+      "",
+      "hello",
+      "```",
+    }, formatted)
+  end)
+end)

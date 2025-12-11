@@ -20,7 +20,8 @@ end
 --- @param output string[]: The output from execution
 --- @return string[]
 function M.format_code_output(block, output)
-  local formatted = { "# code", "", "```" .. block.language }
+  local language = block.language or ""
+  local formatted = { "# code", "", "```" .. language }
   vim.list_extend(formatted, vim.split(block.code, "\n"))
   table.insert(formatted, "```")
 
